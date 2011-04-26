@@ -14,7 +14,6 @@ def normalize_column_type(l):
 
     Returns a tuple of (type, normal_values).
     """
-
     # Convert "NA", "N/A", etc. to null types.
     for x in l:
         if x == None:

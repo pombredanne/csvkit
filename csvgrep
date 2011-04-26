@@ -4,7 +4,7 @@ import re
 import sys
 
 from csvkit import CSVKitReader, CSVKitWriter
-from csvkit.grep import FilteringCSVReader
+from csvkit.grep import CSVGrepReader
 from csvkit.cli import extract_csv_reader_kwargs, extract_csv_writer_kwargs, init_common_parser, parse_column_identifiers
 
 def main(args):
@@ -32,7 +32,7 @@ def main(args):
     output = CSVKitWriter(sys.stdout, **extract_csv_writer_kwargs(args))
     output.writerow(column_names)
 
-    filter_reader = FilteringCSVReader(rows, header=False, patterns = patterns)
+    filter_reader = CSVGrepReader(rows, header=False, patterns=patterns)
 
     for i, row in enumerate(filter_reader):
         output.writerow(row)

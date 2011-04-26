@@ -98,10 +98,6 @@ def match_column_identifier(column_names, c):
         if c < 0:
             raise ColumnIdentifierError('Columns 0 is not valid; columns are 1-based.')
 
-        # Fail out if index is out of range
-        if c >= len(column_names):
-            raise ColumnIdentifierError('Index %i is beyond the last named column, "%s" at index %i.' % (c, column_names[-1], len(column_names) - 1))
-
     return c
 
 def parse_column_identifiers(ids, column_names):

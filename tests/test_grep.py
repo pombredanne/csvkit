@@ -3,7 +3,7 @@
 import unittest
 import re
 
-from csvkit.grep import FilteringCSVReader
+from csvkit.grep import CSVGrepReader
 
 class TestGrep(unittest.TestCase):
     def setUp(self):
@@ -23,7 +23,7 @@ class TestGrep(unittest.TestCase):
 
 
     def test_pattern(self):
-        fcr = FilteringCSVReader(iter(self.tab1),patterns=['1'])
+        fcr = CSVGrepReader(iter(self.tab1),patterns=['1'])
         self.assertEqual(self.tab1[0],fcr.next())
         self.assertEqual(self.tab1[1],fcr.next())
         self.assertEqual(self.tab1[4],fcr.next())
@@ -34,7 +34,7 @@ class TestGrep(unittest.TestCase):
             pass
 
     def test_no_header(self):
-        fcr = FilteringCSVReader(iter(self.tab1),patterns={ 2: 'only' },header=False)
+        fcr = CSVGrepReader(iter(self.tab1),patterns={ 2: 'only' },header=False)
         self.assertEqual(self.tab1[2],fcr.next())
         self.assertEqual(self.tab1[3],fcr.next())
         try:
@@ -46,7 +46,7 @@ class TestGrep(unittest.TestCase):
 
     def test_regex(self):
         pattern = re.compile(".*(Reader|Tribune).*")
-        fcr = FilteringCSVReader(iter(self.tab1),patterns = { 1: pattern })
+        fcr = CSVGrepReader(iter(self.tab1),patterns = { 1: pattern })
         
         self.assertEqual(self.tab1[0],fcr.next())
         self.assertEqual(self.tab1[1],fcr.next())
@@ -59,7 +59,7 @@ class TestGrep(unittest.TestCase):
             pass
         
     def test_inverse(self):
-        fcr = FilteringCSVReader(iter(self.tab2),patterns = ['1'], inverse=True)
+        fcr = CSVGrepReader(iter(self.tab2),patterns = ['1'], inverse=True)
         self.assertEqual(self.tab2[0],fcr.next())
         self.assertEqual(self.tab2[2],fcr.next())
         self.assertEqual(self.tab2[4],fcr.next())
