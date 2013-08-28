@@ -9,10 +9,11 @@ https://gist.github.com/561347/9846ebf8d0a69b06681da9255ffe3d3f59ec2c97
 Used and modified with permission.
 """
 
-import sys
+import itertools
 
 from csvkit import CSVKitReader, CSVKitWriter
-from csvkit.cli import CSVKitUtility, parse_column_identifiers, print_column_names
+from csvkit.cli import CSVKitUtility, parse_column_identifiers
+from csvkit.headers import make_default_headers
 
 class CSVCut(CSVKitUtility):
     description = 'Filter and truncate CSV files. Like unix "cut" command, but for tabular data.'
@@ -22,19 +23,30 @@ class CSVCut(CSVKitUtility):
                         help='Display column names and indices from the input CSV and exit.')
         self.argparser.add_argument('-c', '--columns', dest='columns',
                         help='A comma separated list of column indices or names to be extracted. Defaults to all columns.')
+        self.argparser.add_argument('-C', '--not-columns', dest='not_columns',
+                        help='A comma separated list of column indices or names to be excluded. Defaults to no columns.')
         self.argparser.add_argument('-x', '--delete-empty-rows', dest='delete_empty', action='store_true',
                         help='After cutting, delete rows which are completely empty.')
 
     def main(self):
         if self.args.names_only:
-            print_column_names(self.args.file, sys.stdout, **self.reader_kwargs)
-            sys.exit()
+            self.print_column_names()
+            return
 
         rows = CSVKitReader(self.args.file, **self.reader_kwargs)
-        column_names = rows.next()
 
-        column_ids = parse_column_identifiers(self.args.columns, column_names)
-        output = CSVKitWriter(sys.stdout, **self.writer_kwargs)
+        if self.args.no_header_row:
+            row = rows.next()
+
+            column_names = make_default_headers(len(row))
+
+            # Put the row back on top
+            rows = itertools.chain([row], rows)
+        else:
+            column_names = rows.next()
+
+        column_ids = parse_column_identifiers(self.args.columns, column_names, self.args.zero_based, self.args.not_columns)
+        output = CSVKitWriter(self.output_file, **self.writer_kwargs)
 
         output.writerow([column_names[c] for c in column_ids])
 
@@ -47,6 +59,10 @@ class CSVCut(CSVKitUtility):
             
             output.writerow(out_row)
                 
-if __name__ == "__main__":
+def launch_new_instance():
     utility = CSVCut()
     utility.main()
+    
+if __name__ == "__main__":
+    launch_new_instance()
+

@@ -2,10 +2,13 @@
 
 import datetime
 from cStringIO import StringIO
+import itertools
 
 from csvkit import CSVKitReader, CSVKitWriter
 from csvkit import sniffer
 from csvkit import typeinference
+from csvkit.cli import parse_column_identifiers
+from csvkit.headers import make_default_headers
 
 class InvalidType(object):
     """
@@ -17,26 +20,27 @@ class Column(list):
     """
     A normalized data column and inferred annotations (nullable, etc.).
     """
-    def __init__(self, order, name, l, normal_type=InvalidType):
+    def __init__(self, order, name, l, normal_type=InvalidType, blanks_as_nulls=True, infer_types=True):
         """
         Construct a column from a sequence of values.
         
-        If normal_type is not None, inference will be skipped and values assumed to have already been normalized.
+        If normal_type is not InvalidType, inference will be skipped and values assumed to have already been normalized.
+        If infer_types is False, type inference will be skipped and the type assumed to be unicode.
         """
         if normal_type != InvalidType:
             t = normal_type
             data = l
+        elif not infer_types:
+            t = unicode
+            data = l
         else:
-            t, data = typeinference.normalize_column_type(l)
+            t, data = typeinference.normalize_column_type(l, blanks_as_nulls=blanks_as_nulls)
         
         list.__init__(self, data)
         self.order = order
         self.name = name or '_unnamed' # empty column names don't make sense 
         self.type = t
         
-        self._compute_nullable() 
-        self._compute_max_length()
-
     def __str__(self):
         return str(self.__unicode__())
 
@@ -55,30 +59,27 @@ class Column(list):
 
         return list.__getitem__(self, key)
 
-    def _compute_nullable(self):
-        self.nullable = True if None in self else False
+    def has_nulls(self):
+        """
+        Check if this column contains nulls.
+        """
+        return True if None in self else False
 
-    def _compute_max_length(self):
+    def max_length(self):
         """
-        Compute maximum length this column occupies when rendered as a string.
+        Compute maximum length of data in this column.
+        
+        Returns 0 if the column does not of type ``unicode``.
         """
-        if len(self) == 0:
-            self.max_length = 0
-            return
+        l = 0
 
         if self.type == unicode:
-            self.max_length = max([len(d) if d else 0 for d in self])
-        elif self.type in [int, float]:
-            self.max_length = max([len(unicode(d)) if d else 0 for d in self])
-        elif self.type in [datetime.datetime, datetime.date, datetime.time]:
-            self.max_length = max([len(d.isoformat()) if d else 0 for d in self]) 
-        elif self.type == bool:
-            self.max_length = 5 # "False"
-        else:
-            self.max_length = 0 
+            l = max([len(d) if d else 0 for d in self])
 
-        if self.nullable:
-            self.max_length = max(self.max_length, 4) # "None"
+            if self.has_nulls():
+                l = max(l, 4) # "None"
+
+        return l
 
 class Table(list):
     """
@@ -179,36 +180,61 @@ class Table(list):
         return row_data
 
     @classmethod
-    def from_csv(cls, f, name='from_csv_table', **kwargs):
+    def from_csv(cls, f, name='from_csv_table', snifflimit=None, column_ids=None, blanks_as_nulls=True, zero_based=False, infer_types=True, no_header_row=False, **kwargs):
         """
         Creates a new Table from a file-like object containing CSV data.
+
+        Note: the column_ids argument will cause only those columns with a matching identifier
+        to be parsed, type inferred, etc. However, their order/index property will reflect the
+        original data (e.g. column 8 will still be "order" 7, even if it's the third column
+        in the resulting Table.
         """
         # This bit of nonsense is to deal with "files" from stdin,
         # which are not seekable and thus must be buffered
         contents = f.read()
 
-        sample = contents
-        dialect = sniffer.sniff_dialect(sample)
+        # snifflimit == 0 means do not sniff
+        if snifflimit is None:
+            kwargs['dialect'] = sniffer.sniff_dialect(contents)
+        elif snifflimit > 0:
+            kwargs['dialect'] = sniffer.sniff_dialect(contents[:snifflimit])
 
-        f = StringIO(contents) 
-        reader = CSVKitReader(f, dialect=dialect, **kwargs)
+        f = StringIO(contents)
+        rows = CSVKitReader(f, **kwargs)
 
-        headers = reader.next()
+        if no_header_row:
+            # Peek at a row to infer column names from
+            row = next(rows) 
 
-        data_columns = [[] for c in headers] 
+            headers = make_default_headers(len(row))
+            column_ids = range(len(row))
+            data_columns = [[] for c in headers]
 
-        for row in reader:
-            for i, d in enumerate(row):
+            # Put row back on top
+            rows = itertools.chain([row], rows)
+        else:
+            headers = rows.next()
+            
+            if column_ids:
+                column_ids = parse_column_identifiers(column_ids, headers, zero_based)
+                headers = [headers[c] for c in column_ids]
+            else:
+                column_ids = range(len(headers))
+        
+            data_columns = [[] for c in headers]
+
+        for i, row in enumerate(rows):
+            for j, d in enumerate(row):
                 try:
-                    data_columns[i].append(d.strip())
+                    data_columns[j].append(row[column_ids[j]].strip())
                 except IndexError:
                     # Non-rectangular data is truncated
                     break
 
         columns = []
 
-        for i, c in enumerate(data_columns): 
-            columns.append(Column(i, headers[i], c))
+        for i, c in enumerate(data_columns):
+            columns.append(Column(column_ids[i], headers[i], c, blanks_as_nulls=blanks_as_nulls, infer_types=infer_types))
 
         return Table(columns, name=name)
 
@@ -244,3 +270,4 @@ class Table(list):
 
         writer = CSVKitWriter(output, **kwargs)
         writer.writerows(rows)
+
