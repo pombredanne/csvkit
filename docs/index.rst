@@ -24,7 +24,7 @@ csvkit is to tabular data what the standard Unix text processing suite (grep, se
 
 As there is no formally defined CSV format, csvkit encourages well-known formatting standards:
 
-* Output favors compatability with the widest range of applications. This means that quoting is done with double-quotes and only when necessary, columns are separated with commas, and lines are terminated with unix style line endings ("\n").
+* Output favors compatability with the widest range of applications. This means that quoting is done with double-quotes and only when necessary, columns are separated with commas, and lines are terminated with unix style line endings ("\\n").
 
 * Data that is modified or generated will prefer consistency over brevity. Floats always include at least one decimal place, even if they are round. Dates and times are written in ISO8601 format.
 
@@ -42,6 +42,10 @@ For developers::
     mkvirtualenv --no-site-packages csvkit
     pip install -r requirements.txt
     nosetests
+
+.. note::
+
+    csvkit is routinely tested on OSX, somewhat less frequently on Linux and once in a while on Windows. All platforms are supported. It is tested against Python 2.6, 2.7 and PyPy. Neither Python < 2.6 nor Python >= 3.0 are supported at this time.
 
 Tutorial
 ========
@@ -88,6 +92,7 @@ csvkit is comprised of a number of individual command line utilities that be loo
 
     scripts/csvjson
     scripts/csvlook
+    scripts/csvpy
     scripts/csvsql
     scripts/csvstat
 
@@ -101,7 +106,14 @@ csvkit is comprised of a number of individual command line utilities that be loo
 Development
 ===========
 
-Documentation on how to use csvkit as a library is coming soon...
+csvkit is designed to augment or supercede much of Python's :mod:`csv` module. Important parts of the API are documented here:
+
+.. toctree::
+    :maxdepth: 1
+
+    api/csvkit
+    api/csvkit.unicsv
+    api/csvkit.sniffer
 
 Contributing
 ============
@@ -122,6 +134,11 @@ License
 =======
 
 .. include:: ../COPYING
+
+Changelog
+=========
+
+.. include:: ../CHANGELOG
 
 Indices and tables
 ==================

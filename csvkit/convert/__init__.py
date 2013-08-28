@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 
 from csvitself import csv2csv
+from dbase import dbf2csv
 from fixed import fixed2csv
+from geojs import geojson2csv
 from js import json2csv
 from xls import xls2csv
+from xlsx import xlsx2csv
 
-SUPPORTED_FORMATS = ['fixed', 'xls', 'csv', 'json']
+SUPPORTED_FORMATS = ['fixed', 'xls', 'xlsx', 'csv', 'json', 'geojson', 'dbf']
 
 def convert(f, format, schema=None, key=None, **kwargs):
     """
@@ -24,10 +27,16 @@ def convert(f, format, schema=None, key=None, **kwargs):
         return fixed2csv(f, schema, **kwargs)
     elif format == 'xls':
         return xls2csv(f, **kwargs)
+    elif format == 'xlsx':
+        return xlsx2csv(f, **kwargs)
     elif format == 'json':
         return json2csv(f, key, **kwargs)
+    elif format == 'geojson':
+        return geojson2csv(f, **kwargs)
     elif format == 'csv':
         return csv2csv(f, **kwargs)
+    elif format == 'dbf':
+        return dbf2csv(f, **kwargs)
     else:
         raise ValueError('format "%s" is not supported' % format)
 
@@ -45,11 +54,16 @@ def guess_format(filename):
 
     if extension == 'xls':
         return extension
+    elif extension == 'xlsx':
+        return extension
     elif extension in ['json', 'js']:
         return 'json' 
     elif extension == 'csv':
         return extension
     elif extension == 'fixed':
         return extension
+    elif extension == 'dbf':
+        return extension
 
     return None
+

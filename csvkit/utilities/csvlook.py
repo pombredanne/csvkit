@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-import sys
-
 from csvkit import CSVKitReader
 from csvkit.cli import CSVKitUtility 
 
@@ -26,10 +24,11 @@ class CSVLook(CSVKitUtility):
                 except IndexError:
                     widths.append(len(v))
 
-        # Width of the fields, plus space between, plus fore and aft dividers 
-        divider = '-' * (sum(widths) + (3 * len(widths)) + 3)
+        # Dashes span each width with '+' character at intersection of
+        # horizontal and vertical dividers.
+        divider = '|--' + '-+-'.join('-'* w for w in widths) + '--|'
 
-        sys.stdout.write('%s\n' % divider)
+        self.output_file.write('%s\n' % divider)
 
         for i, row in enumerate(rows):
             output = []
@@ -39,11 +38,15 @@ class CSVLook(CSVKitUtility):
                     d = ''
                 output.append(' %s ' % unicode(d).ljust(widths[j]))
 
-            sys.stdout.write('| %s |\n' % ('|'.join(output)))
+            self.output_file.write(('| %s |\n' % ('|'.join(output))).encode('utf-8'))
 
-            if i == 0 or i == len(rows) - 1:
-                sys.stdout.write('%s\n' % divider)
+            if (i == 0 and not self.args.no_header_row) or i == len(rows) - 1:
+                self.output_file.write('%s\n' % divider)
 
-if __name__ == '__main__':
+def launch_new_instance():
     utility = CSVLook()
     utility.main()
+    
+if __name__ == "__main__":
+    launch_new_instance()
+

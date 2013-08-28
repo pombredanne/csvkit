@@ -72,15 +72,23 @@ class TestXLS(unittest.TestCase):
         self.assertEquals(column_type, xlrd.biffh.XL_CELL_NUMBER)
 
     def test_determine_column_type_multiple(self):
-        self.assertRaises(XLSDataError, xls.determine_column_type, [xlrd.biffh.XL_CELL_NUMBER, xlrd.biffh.XL_CELL_TEXT, xlrd.biffh.XL_CELL_EMPTY]) 
+        column_type = xls.determine_column_type([xlrd.biffh.XL_CELL_NUMBER, xlrd.biffh.XL_CELL_TEXT, xlrd.biffh.XL_CELL_EMPTY])
+        self.assertEquals(column_type, xlrd.biffh.XL_CELL_TEXT) 
 
     def test_determine_column_type_empty(self):
         column_type = xls.determine_column_type([xlrd.biffh.XL_CELL_EMPTY, xlrd.biffh.XL_CELL_EMPTY, xlrd.biffh.XL_CELL_EMPTY])
         self.assertEquals(column_type, xlrd.biffh.XL_CELL_EMPTY) 
 
     def test_xls(self):
-        with open('examples/test.xls', 'r') as f:
+        with open('examples/test.xls', 'rb') as f:
             output = xls.xls2csv(f)
         
         with open('examples/testxls_converted.csv', 'r') as f:
+            self.assertEquals(f.read(), output)
+
+    def test_xls_with_sheet(self):
+        with open('examples/sheets.xls', 'rb') as f:
+            output = xls.xls2csv(f, sheet='Sheet2')
+
+        with open('examples/sheetsxls_converted.csv', 'r') as f:
             self.assertEquals(f.read(), output)

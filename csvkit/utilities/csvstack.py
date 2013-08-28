@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 
 import os
-import sys
 
 from csvkit import CSVKitReader, CSVKitWriter
 from csvkit.cli import CSVFileType, CSVKitUtility
+from csvkit.headers import make_default_headers
 
 class CSVStack(CSVKitUtility):
     description = 'Stack up the rows from multiple CSV files, optionally adding a grouping value.'
-    override_flags = 'f'
+    override_flags = ['f']
 
     def add_arguments(self):
         self.argparser.add_argument('files', metavar='FILES', nargs='+', type=CSVFileType())
@@ -21,7 +21,7 @@ class CSVStack(CSVKitUtility):
 
     def main(self):
         if len(self.args.files) < 2:
-            sys.exit('You must specify at least two files to stack.')
+            self.argparser.error('You must specify at least two files to stack.')
 
         if self.args.group_by_filenames:
             groups = [os.path.split(f.name)[1] for f in self.args.files] 
@@ -29,7 +29,7 @@ class CSVStack(CSVKitUtility):
             groups = self.args.groups.split(',')
 
             if len(groups) != len(self.args.files):
-                sys.exit('The number of grouping values must be equal to the number of CSV files being stacked.')
+                self.argparser.error('The number of grouping values must be equal to the number of CSV files being stacked.')
         else:
             groups = None
                 
@@ -39,13 +39,32 @@ class CSVStack(CSVKitUtility):
 
         for i, f in enumerate(self.args.files):
             rows = CSVKitReader(f, **self.reader_kwargs)
-            headers = rows.next()
 
-            if i == 0:
+            # If we have header rows, use them
+            if not self.args.no_header_row:
+                headers = next(rows, [])
+
+                if i == 0:
+                    if groups:
+                        headers.insert(0, group_name)
+
+                    output.writerow(headers)
+            # If we don't generate simple column names based on first row
+            else:
+                row = next(rows, [])
+
+                headers = make_default_headers(len(row))
+
+                if i == 0:
+                    if groups:
+                        headers.insert(0, group_name)
+
+                    output.writerow(headers)
+
                 if groups:
-                    headers.insert(0, group_name)
-                
-                output.writerow(headers)
+                    row.insert(0, groups[i])
+
+                output.writerow(row)
 
             for row in rows:
                 if groups:
@@ -53,6 +72,12 @@ class CSVStack(CSVKitUtility):
 
                 output.writerow(row)
 
-if __name__ == '__main__':
-    CSVStack().main()
+            f.close()
+
+def launch_new_instance():
+    utility = CSVStack()
+    utility.main()
+    
+if __name__ == "__main__":
+    launch_new_instance()
 

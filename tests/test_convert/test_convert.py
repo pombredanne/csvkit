@@ -4,7 +4,7 @@ from csvkit import convert
 
 class TestConvert(unittest.TestCase):
     def test_valid_file(self):
-        with open('examples/test.xls', 'r') as f:
+        with open('examples/test.xls', 'rb') as f:
             output = convert.convert(f, 'xls')
         
         with open('examples/testxls_converted.csv', 'r') as f:
@@ -26,6 +26,16 @@ class TestConvert(unittest.TestCase):
 
     def test_guess_xls(self):
         self.assertEqual('xls', convert.guess_format('testdata.xls'))
+
+    def test_guess_xlsx(self):
+        self.assertEqual('xlsx', convert.guess_format('testdata.xlsx'))
     
     def test_guess_csv(self):
         self.assertEqual('csv', convert.guess_format('testdata.csv'))
+
+    def test_guess_dbf(self):
+        self.assertEqual('dbf', convert.guess_format('testdata.dbf'))
+
+    def test_guess_json(self):
+        self.assertEqual('json', convert.guess_format('testdata.json'))
+

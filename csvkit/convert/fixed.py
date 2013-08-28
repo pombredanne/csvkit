@@ -21,12 +21,14 @@ def fixed2csv(f, schema, output=None, **kwargs):
     if not streaming:
         output = StringIO()
 
-    if 'encoding' in kwargs and kwargs['encoding']:
-        f = iterdecode(f, kwargs['encoding'])
-        
+    try:
+        encoding = kwargs['encoding']
+    except KeyError:
+        encoding = None
+
     writer = CSVKitWriter(output)
 
-    reader = FixedWidthReader(f, schema)
+    reader = FixedWidthReader(f, schema, encoding=encoding)
     writer.writerows(reader)
 
     if not streaming:
@@ -43,7 +45,9 @@ class FixedWidthReader(object):
     
     The schema_file should be in CSV format with a header row which has columns 'column', 'start', and 'length'. (Other columns will be ignored.)  Values in the 'start' column are assumed to be "zero-based" unless the first value is "1" in which case all values are assumed to be "one-based."
     """
-    def __init__(self, f, schema):
+    def __init__(self, f, schema, encoding=None):
+        if encoding is not None:
+            f = iterdecode(f, encoding)
         self.file = f
         self.parser = FixedWidthRowParser(schema)
         self.header = True
@@ -70,8 +74,11 @@ class FixedWidthRowParser(object):
         schema_reader = CSVKitReader(schema)
         schema_decoder = SchemaDecoder(schema_reader.next())
 
-        for row in schema_reader:
-            self.fields.append(schema_decoder(row))
+        for i,row in enumerate(schema_reader):
+            try:
+                self.fields.append(schema_decoder(row))
+            except Exception,e:
+                raise ValueError("Error reading schema at line %i: %s" % (i + 2,e))
 
     def parse(self, line):
         values = []
@@ -80,7 +87,12 @@ class FixedWidthRowParser(object):
             values.append(line[field.start:field.start + field.length].strip())
 
         return values
-        
+
+
+    def parse_dict(self, line):
+        """Convenience method returns a dict. Equivalent to dict(zip(self.headers,self.parse(line)))."""
+        return dict(zip(self.headers,self.parse(line)))
+
     @property
     def headers(self):
         return [field.name for field in self.fields]
@@ -89,7 +101,7 @@ class SchemaDecoder(object):
     """
     Extracts column, start, and length columns from schema rows. Once instantiated, each time the instance is called with a row, a (column,start,length) tuple will be returned based on values in that row and the constructor kwargs.
     """
-    REQUIRED_COLUMNS = ['column', 'start', 'length']
+    REQUIRED_COLUMNS = [('column', None), ('start', int), ('length', int)]
 
     start = None
     length = None
@@ -100,10 +112,13 @@ class SchemaDecoder(object):
         """
         Constructs a schema row decoder. 
         """
-        for p in self.REQUIRED_COLUMNS:
+        for p, val_type in self.REQUIRED_COLUMNS:
             try:
-                setattr(self, p, header.index(p))
-            except IndexError:
+                if val_type:
+                    setattr(self, p, val_type(header.index(p)))
+                else:
+                    setattr(self, p, header.index(p))
+            except ValueError:
                 raise ValueError('A column named "%s" must exist in the schema file.' % (p))
 
     def __call__(self, row):
