@@ -12,7 +12,7 @@ class CSVSQL(CSVKitUtility):
     override_flags = ['l', 'f']
 
     def add_arguments(self):
-        self.argparser.add_argument('files', metavar="FILE", nargs='*', type=CSVFileType(), default=sys.stdin,
+        self.argparser.add_argument('files', metavar="FILE", nargs='*', type=CSVFileType(), default=[sys.stdin],
             help='The CSV file(s) to operate on. If omitted, will accept input on STDIN.')
         self.argparser.add_argument('-y', '--snifflimit', dest='snifflimit', type=int,
             help='Limit CSV dialect sniffing to the specified number of bytes. Specify "0" to disable sniffing entirely.')
@@ -57,6 +57,13 @@ class CSVSQL(CSVKitUtility):
             if self.args.no_create and not self.args.insert:
                 self.argparser.error('The --no-create option is only valid --insert is also specified.')
 
+            # Establish database validity before reading CSV
+            if self.args.connection_string:
+                try:
+                    engine, metadata = sql.get_connection(self.args.connection_string)
+                except ImportError:
+                    raise ImportError('You don\'t appear to have the necessary database backend installed for connection string you\'re trying to use. Available backends include:\n\nPostgresql:\tpip install psycopg2\nMySQL:\t\tpip install MySQL-python\n\nFor details on connection strings and other backends, please see the SQLAlchemy documentation on dialects at: \n\nhttp://www.sqlalchemy.org/docs/dialects/\n\n')
+
             csv_table = table.Table.from_csv(
                 f,
                 name=table_name,
@@ -69,13 +76,8 @@ class CSVSQL(CSVKitUtility):
 
             f.close()
 
-            # Direct connections to database
+            # Connection established above
             if self.args.connection_string:
-                try:
-                    engine, metadata = sql.get_connection(self.args.connection_string)
-                except ImportError:
-                    raise ImportError('You don\'t appear to have the necessary database backend installed for connection string you\'re trying to use.. Available backends include:\n\nPostgresql:\tpip install psycopg2\nMySQL:\t\tpip install MySQL-python\n\nFor details on connection strings and other backends, please see the SQLAlchemy documentation on dialects at: \n\nhttp://www.sqlalchemy.org/docs/dialects/\n\n')
-
                 sql_table = sql.make_table(
                     csv_table,
                     table_name,

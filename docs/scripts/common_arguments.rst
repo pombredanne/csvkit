@@ -20,9 +20,9 @@ All utilities which accept CSV as input share a set of common command-line argum
   -b, --doublequote     Whether or not double quotes are doubled in the input
                         CSV file.
   -p ESCAPECHAR, --escapechar ESCAPECHAR
-                        Character used to escape the delimiter if quoting is
-                        set to "Quote None" and the quotechar if doublequote
-                        is not specified.
+                        Character used to escape the delimiter if --quoting 3
+                        ("Quote None") is specified and to escape the
+                        QUOTECHAR if --doublequote is not specified.
   -z MAXFIELDSIZE, --maxfieldsize MAXFIELDSIZE
                         Maximum length of a single field in the input CSV
                         file.
@@ -30,7 +30,6 @@ All utilities which accept CSV as input share a set of common command-line argum
   -e ENCODING, --encoding ENCODING
   -S, --skipinitialspace
                         Ignore whitespace immediately following the delimiter.
-  -H, --no-header-row   Specifies that the input CSV file has no header row.
   -v, --verbose         Print detailed tracebacks when errors occur.
                         Specify the encoding the input file.
   -l, --linenumbers     Insert a column of line numbers at the front of the
