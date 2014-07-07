@@ -1,6 +1,12 @@
 0.7.3
 -----
 
+* Fix date handling with openpyxl > 2.0 (#285)
+* Add Kristina Durivage to AUTHORS. (#243)
+* Added Richard Low to AUTHORS.
+* Support SQL queries "directly" on CSV files. (#276)
+* Add Tasneem Raja to AUTHORS.
+* Fix off-by-one error in open ended column ranges. (#238)
 * Add Matt Pettis to AUTHORS.
 * Add line numbers flag to csvlook (#244)
 * Only install argparse for Python < 2.7. (#224)
