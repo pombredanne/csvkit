@@ -1,83 +1,50 @@
 #!/usr/bin/env python
 
-from csvkit import CSVKitReader
-from csvkit.cli import CSVKitUtility 
-from csvkit.headers import make_default_headers
-import itertools
+import agate
+
+from csvkit.cli import CSVKitUtility
+
 
 class CSVLook(CSVKitUtility):
-    description = 'Render a CSV file in the console as a fixed-width table.'
+    description = 'Render a CSV file in the console as a Markdown-compatible, fixed-width table.'
 
     def add_arguments(self):
-        pass
+        self.argparser.add_argument('--max-rows', dest='max_rows', type=int,
+                                    help='The maximum number of rows to display before truncating the data.')
+        self.argparser.add_argument('--max-columns', dest='max_columns', type=int,
+                                    help='The maximum number of columns to display before truncating the data.')
+        self.argparser.add_argument('--max-column-width', dest='max_column_width', type=int,
+                                    help='Truncate all columns to at most this width. The remainder will be replaced with ellipsis.')
+        self.argparser.add_argument('-y', '--snifflimit', dest='sniff_limit', type=int,
+                                    help='Limit CSV dialect sniffing to the specified number of bytes. Specify "0" to disable sniffing entirely.')
+        self.argparser.add_argument('-I', '--no-inference', dest='no_inference', action='store_true',
+                                    help='Disable type inference when parsing the input.')
 
     def main(self):
-        rows = CSVKitReader(self.args.file, **self.reader_kwargs)
+        if self.additional_input_expected():
+            self.argparser.error('You must provide an input file or piped data.')
 
+        table = agate.Table.from_csv(
+            self.input_file,
+            skip_lines=self.args.skip_lines,
+            sniff_limit=self.args.sniff_limit,
+            column_types=self.get_column_types(),
+            line_numbers=self.args.line_numbers,
+            **self.reader_kwargs
+        )
 
+        table.print_table(
+            output=self.output_file,
+            max_rows=self.args.max_rows,
+            max_columns=self.args.max_columns,
+            max_column_width=self.args.max_column_width
+        )
 
-        # Make a default header row if none exists
-        if self.args.no_header_row:
-            row = rows.next()
-
-            column_names = make_default_headers(len(row))
-
-            # Put the row back on top
-            rows = itertools.chain([row], rows)
-        else:
-            column_names = rows.next()
-
-        column_names = list(column_names)
-
-
-
-        # prepend 'line_number' column with line numbers if --linenumbers option
-        if self.args.line_numbers:
-            column_names.insert(0, 'line_number')
-            rows = [list(itertools.chain([str(i + 1)], row)) for i, row in enumerate(rows)]
-
-
-        # Convert to normal list of rows
-        rows = list(rows)
-
-        # Insert the column names at the top
-        rows.insert(0, column_names)
-
-
-
-        widths = []
-
-        for row in rows:
-            for i, v in enumerate(row):
-                try:
-                    if len(v) > widths[i]:
-                        widths[i] = len(v)
-                except IndexError:
-                    widths.append(len(v))
-
-        # Dashes span each width with '+' character at intersection of
-        # horizontal and vertical dividers.
-        divider = '|--' + '-+-'.join('-'* w for w in widths) + '--|'
-
-        self.output_file.write('%s\n' % divider)
-
-        for i, row in enumerate(rows):
-            output = []
-
-            for j, d in enumerate(row):
-                if d is None:
-                    d = ''
-                output.append(' %s ' % unicode(d).ljust(widths[j]))
-
-            self.output_file.write(('| %s |\n' % ('|'.join(output))).encode('utf-8'))
-
-            if (i == 0 or i == len(rows) - 1):
-                self.output_file.write('%s\n' % divider)
 
 def launch_new_instance():
     utility = CSVLook()
-    utility.main()
-    
-if __name__ == "__main__":
-    launch_new_instance()
+    utility.run()
 
+
+if __name__ == '__main__':
+    launch_new_instance()

@@ -17,7 +17,12 @@ Converting fixed width requires that you provide a schema file with the "-s" opt
 The header line is required though the columns may be in any order::
 
     usage: in2csv [-h] [-d DELIMITER] [-t] [-q QUOTECHAR] [-u {0,1,2,3}] [-b]
-                  [-p` ESCAPECHAR] [-e ENCODING] [-f FORMAT] [-s SCHEMA]
+                  [-p ESCAPECHAR] [-z FIELD_SIZE_LIMIT] [-e ENCODING] [-L LOCALE]
+                  [-S] [--blanks] [--date-format DATE_FORMAT]
+                  [--datetime-format DATETIME_FORMAT] [-H] [-K SKIP_LINES] [-v]
+                  [-l] [--zero] [-V] [-f FILETYPE] [-s SCHEMA] [-k KEY] [-n]
+                  [--sheet SHEET] [--write-sheets WRITE_SHEETS]
+                  [--encoding-xls ENCODING_XLS] [-y SNIFF_LIMIT] [-I]
                   [FILE]
 
     Convert common, but less awesome, tabular data formats to CSV.
@@ -28,53 +33,67 @@ The header line is required though the columns may be in any order::
 
     optional arguments:
       -h, --help            show this help message and exit
-      -f FORMAT, --format FORMAT
+      -f FILETYPE, --format FILETYPE
                             The format of the input file. If not specified will be
                             inferred from the file type. Supported formats: csv,
-                            dbf, fixed, geojson, json, xls, xlsx.
+                            dbf, fixed, geojson, json, ndjson, xls, xlsx.
       -s SCHEMA, --schema SCHEMA
-                            Specifies a CSV-formatted schema file for converting
+                            Specify a CSV-formatted schema file for converting
                             fixed-width files. See documentation for details.
-      -k KEY, --key KEY     Specifies a top-level key to use look within for a
-                            list of objects to be converted when processing JSON.
-      -y SNIFFLIMIT, --snifflimit SNIFFLIMIT
+      -k KEY, --key KEY     Specify a top-level key to use look within for a list
+                            of objects to be converted when processing JSON.
+      -n, --names           Display sheet names from the input Excel file.
+      --sheet SHEET         The name of the Excel sheet to operate on.
+      --write-sheets WRITE_SHEETS
+                            The names of the Excel sheets to write to files, or
+                            "-" to write all sheets.
+      -y SNIFF_LIMIT, --snifflimit SNIFF_LIMIT
                             Limit CSV dialect sniffing to the specified number of
                             bytes. Specify "0" to disable sniffing entirely.
-      --sheet SHEET         The name of the XLSX sheet to operate on.
-      --no-inference        Disable type inference when parsing the input.
+      -I, --no-inference    Disable type inference (and --locale, --date-format,
+                            --datetime-format) when parsing CSV input.
 
-Also see: :doc:`common_arguments`.
+    Some command-line flags only pertain to specific input formats.
+
+See also: :doc:`../common_arguments`.
+
+.. note::
+
+    The "ndjson" format refers to "newline delimited JSON", as used by many streaming APIs.
+
+.. note::
+
+    If an XLS looks identical to an XLSX when viewed in Excel, they may not be identical as CSV. For example, XLSX has an integer type, but XLS doesn't. Numbers that look like integers from an XLS will have decimals in CSV, but those from an XLSX won't.
+
+.. note::
+
+    To convert from HTML, consider `messytables <https://messytables.readthedocs.io/>`_.
 
 Examples
 ========
 
 Convert the 2000 census geo headers file from fixed-width to CSV and from latin-1 encoding to utf8::
 
-    $ in2csv -e iso-8859-1 -f fixed -s examples/realdata/census_2000/census2000_geo_schema.csv examples/realdata/census_2000/usgeo_excerpt.upl > usgeo.csv
+    in2csv -e iso-8859-1 -f fixed -s examples/realdata/census_2000/census2000_geo_schema.csv examples/realdata/census_2000/usgeo_excerpt.upl
 
 .. note::
 
     A library of fixed-width schemas is maintained in the ``ffs`` project:
 
-    https://github.com/onyxfish/ffs
+    https://github.com/wireservice/ffs
 
 Convert an Excel .xls file::
 
-    $ in2csv examples/test.xls
+    in2csv examples/test.xls
 
 Standardize the formatting of a CSV file (quoting, line endings, etc.)::
 
-    $ in2csv examples/realdata/FY09_EDU_Recipients_by_State.csv
+    in2csv examples/realdata/FY09_EDU_Recipients_by_State.csv
 
-Fetch csvkit's open issues from the Github API, convert the JSON response into a CSV and write it to a file::
+Fetch csvkit's open issues from the GitHub API, convert the JSON response into a CSV and write it to a file::
 
-    $ curl https://api.github.com/repos/onyxfish/csvkit/issues?state=open | in2csv -f json -v > issues.csv 
+    curl https://api.github.com/repos/wireservice/csvkit/issues?state=open | in2csv -f json -v
 
 Convert a DBase DBF file to an equivalent CSV::
 
-    $ in2csv examples/testdbf.dbf > testdbf_converted.csv
-
-Fetch the ten most recent robberies in Oakland, convert the GeoJSON response into a CSV and write it to a file::
-
-    $ curl "http://oakland.crimespotting.org/crime-data?format=json&type=robbery&count=10" | in2csv -f geojson > robberies.csv
-
+    in2csv examples/testdbf.dbf

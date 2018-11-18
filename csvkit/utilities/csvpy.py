@@ -1,43 +1,59 @@
 #!/usr/bin/env python
 
-from csvkit import CSVKitReader, CSVKitDictReader
-from csvkit.cli import CSVFileType, CSVKitUtility 
+import sys
+
+import agate
+
+from csvkit.cli import CSVKitUtility
+
 
 class CSVPy(CSVKitUtility):
-    description = 'Load a CSV file into a CSVKitReader object and then drops into a Python shell.'
-    override_flags = ['l', 'f', 'zero', 'H']
+    description = 'Load a CSV file into a CSV reader and then drop into a Python shell.'
 
     def add_arguments(self):
-        self.argparser.add_argument('file', metavar="FILE", type=CSVFileType(),
-            help='The CSV file to operate on.')
         self.argparser.add_argument('--dict', dest='as_dict', action='store_true',
-            help='Use CSVKitDictReader instead of CSVKitReader.')
+                                    help='Load the CSV file into a DictReader.')
+        self.argparser.add_argument('--agate', dest='as_agate', action='store_true',
+                                    help='Load the CSV file into an agate table.')
 
     def main(self):
+        if self.input_file == sys.stdin:
+            self.argparser.error('csvpy cannot accept input on STDIN (pipe).')
+
         # Attempt reading filename, will cause lazy loader to access file and raise error if it does not exist
-        filename = self.args.file.name
+        filename = self.input_file.name
 
         if self.args.as_dict:
-            reader_class = CSVKitDictReader
+            klass = agate.csv.DictReader
+            class_name = 'agate.csv.DictReader'
+            variable_name = 'reader'
+        elif self.args.as_agate:
+            klass = agate.Table.from_csv
+            class_name = 'agate.Table'
+            variable_name = 'table'
         else:
-            reader_class = CSVKitReader
+            klass = agate.csv.reader
+            class_name = 'agate.csv.reader'
+            variable_name = 'reader'
 
-        reader = reader_class(self.args.file, **self.reader_kwargs)
-        
-        welcome_message = 'Welcome! "%s" has been loaded in a %s object named "reader".' % (filename, reader_class.__name__)
+        variable = klass(self.input_file, **self.reader_kwargs)
+
+        welcome_message = 'Welcome! "%s" has been loaded in an %s object named "%s".' % (filename, class_name, variable_name)
 
         try:
             from IPython.frontend.terminal.embed import InteractiveShellEmbed
+            exec('%s = variable' % variable_name)
             ipy = InteractiveShellEmbed(banner1=welcome_message)
             ipy()
         except ImportError:
             import code
-            code.interact(welcome_message, local={ 'reader': reader })        
+            code.interact(welcome_message, local={variable_name: variable})
+
 
 def launch_new_instance():
     utility = CSVPy()
-    utility.main()
-    
-if __name__ == "__main__":
-    launch_new_instance()
+    utility.run()
 
+
+if __name__ == '__main__':
+    launch_new_instance()

@@ -8,10 +8,14 @@ Description
 Prints descriptive statistics for all columns in a CSV file. Will intelligently determine the type of each column and then print analysis relevant to that type (ranges for dates, mean and median for integers, etc.)::
 
     usage: csvstat [-h] [-d DELIMITER] [-t] [-q QUOTECHAR] [-u {0,1,2,3}] [-b]
-                      [-p` ESCAPECHAR] [-e ENCODING]
-                      [FILE]
+                   [-p ESCAPECHAR] [-z FIELD_SIZE_LIMIT] [-e ENCODING] [-S] [-H]
+                   [-K SKIP_LINES] [-v] [-l] [--zero] [-V] [--csv] [-n]
+                   [-c COLUMNS] [--type] [--nulls] [--unique] [--min] [--max]
+                   [--sum] [--mean] [--median] [--stdev] [--len] [--freq]
+                   [--freq-count FREQ_COUNT] [--count] [-y SNIFF_LIMIT]
+                   [FILE]
 
-    Print descriptive statistics for all columns in a CSV file.
+    Print descriptive statistics for each column in a CSV file.
 
     positional arguments:
       FILE                  The CSV file to operate on. If omitted, will accept
@@ -19,50 +23,57 @@ Prints descriptive statistics for all columns in a CSV file. Will intelligently 
 
     optional arguments:
       -h, --help            show this help message and exit
-      -y SNIFFLIMIT, --snifflimit SNIFFLIMIT
+      --csv                 Output results as a CSV, rather than text.
+      -n, --names           Display column names and indices from the input CSV
+                            and exit.
+      -c COLUMNS, --columns COLUMNS
+                            A comma separated list of column indices, names or
+                            ranges to be examined, e.g. "1,id,3-5". Defaults to
+                            all columns.
+      --type                Only output data type.
+      --nulls               Only output whether columns contains nulls.
+      --unique              Only output counts of unique values.
+      --min                 Only output smallest values.
+      --max                 Only output largest values.
+      --sum                 Only output sums.
+      --mean                Only output means.
+      --median              Only output medians.
+      --stdev               Only output standard deviations.
+      --len                 Only output the length of the longest values.
+      --freq                Only output lists of frequent values.
+      --freq-count FREQ_COUNT
+                            The maximum number of frequent values to display.
+      --count               Only output total row count.
+      -y SNIFF_LIMIT, --snifflimit SNIFF_LIMIT
                             Limit CSV dialect sniffing to the specified number of
                             bytes. Specify "0" to disable sniffing entirely.
-      -c COLUMNS, --columns COLUMNS
-                            A comma separated list of column indices or names to
-                            be examined. Defaults to all columns.
-      --max                 Only output max.
-      --min                 Only output min.
-      --sum                 Only output sum.
-      --mean                Only output mean.
-      --median              Only output median.
-      --stdev               Only output standard deviation.
-      --nulls               Only output whether column contains nulls.
-      --unique              Only output unique values.
-      --freq                Only output frequent values.
-      --len                 Only output max value length.
 
-Also see: :doc:`common_arguments`.
+See also: :doc:`../common_arguments`.
 
 Examples
 ========
 
 Basic use::
 
-    $ csvstat examples/realdata/FY09_EDU_Recipients_by_State.csv 
+    csvstat examples/realdata/FY09_EDU_Recipients_by_State.csv
 
 When an statistic name is passed, only that stat will be printed::
 
-    $ csvstat --freq examples/realdata/FY09_EDU_Recipients_by_State.csv
+    csvstat --min examples/realdata/FY09_EDU_Recipients_by_State.csv
 
-      1. State Name: None
-      2. State Abbreviate: None
-      3. Code: None
-      4. Montgomery GI Bill-Active Duty: 3548.0
-      5. Montgomery GI Bill- Selective Reserve: 1019.0
-      6. Dependents' Educational Assistance: 1261.0
-      7. Reserve Educational Assistance Program: 715.0
-      8. Post-Vietnam Era Veteran's Educational Assistance Program: 6.0
-      9. TOTAL: 6520.0
-     10. _unnamed: None
- 
+        1. State Name: None
+        2. State Abbreviate: None
+        3. Code: 1
+        4. Montgomery GI Bill-Active Duty: 435
+        5. Montgomery GI Bill- Selective Reserve: 48
+        6. Dependents' Educational Assistance: 118
+        7. Reserve Educational Assistance Program: 60
+        8. Post-Vietnam Era Veteran's Educational Assistance Program: 1
+        9. TOTAL: 768
+       10. j: None
+
 If a single stat *and* a single column are requested, only a value will be returned::
 
-    $ csvstat -c 4 --freq examples/realdata/FY09_EDU_Recipients_by_State.csv
+    csvstat -c 4 --mean examples/realdata/FY09_EDU_Recipients_by_State.csv
 
-    3548.0
-
+    6,263.904

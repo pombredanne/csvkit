@@ -1,230 +1,345 @@
 #!/usr/bin/env python
 
-import datetime
-from types import NoneType
-import math
+import codecs
+from collections import OrderedDict
+from decimal import Decimal
+import warnings
 
-from csvkit import table
-from csvkit.cli import CSVKitUtility
-from heapq import nlargest
-from operator import itemgetter
+import agate
+from babel.numbers import format_decimal
+import six
 
-MAX_UNIQUE = 5
-MAX_FREQ = 5
-OPERATIONS =('min', 'max', 'sum', 'mean', 'median', 'stdev', 'nulls', 'unique', 'freq', 'len')
+from csvkit.cli import CSVKitUtility, parse_column_identifiers
+
+NoneType = type(None)
+
+OPERATIONS = OrderedDict([
+    ('type', {
+        'aggregation': None,
+        'label': 'Type of data: '
+    }),
+    ('nulls', {
+        'aggregation': agate.HasNulls,
+        'label': 'Contains null values: '
+    }),
+    ('unique', {
+        'aggregation': None,
+        'label': 'Unique values: '
+    }),
+    ('min', {
+        'aggregation': agate.Min,
+        'label': 'Smallest value: '
+    }),
+    ('max', {
+        'aggregation': agate.Max,
+        'label': 'Largest value: '
+    }),
+    ('sum', {
+        'aggregation': agate.Sum,
+        'label': 'Sum: '
+    }),
+    ('mean', {
+        'aggregation': agate.Mean,
+        'label': 'Mean: '
+    }),
+    ('median', {
+        'aggregation': agate.Median,
+        'label': 'Median: '
+    }),
+    ('stdev', {
+        'aggregation': agate.StDev,
+        'label': 'StDev: '
+    }),
+    ('len', {
+        'aggregation': agate.MaxLength,
+        'label': 'Longest value: '
+    }),
+    ('freq', {
+        'aggregation': None,
+        'label': 'Most common values: '
+    })
+])
+
 
 class CSVStat(CSVKitUtility):
     description = 'Print descriptive statistics for each column in a CSV file.'
-    override_flags = ['l']
+    override_flags = ['L', 'blanks', 'date-format', 'datetime-format']
 
     def add_arguments(self):
-        self.argparser.add_argument('-y', '--snifflimit', dest='snifflimit', type=int,
-            help='Limit CSV dialect sniffing to the specified number of bytes. Specify "0" to disable sniffing entirely.')
+        self.argparser.add_argument('--csv', dest='csv_output', action='store_true',
+                                    help='Output results as a CSV, rather than text.')
+        self.argparser.add_argument('-n', '--names', dest='names_only', action='store_true',
+                                    help='Display column names and indices from the input CSV and exit.')
         self.argparser.add_argument('-c', '--columns', dest='columns',
-            help='A comma separated list of column indices or names to be examined. Defaults to all columns.')
-        self.argparser.add_argument('--max', dest='max_only', action='store_true',
-            help='Only output max.')
-        self.argparser.add_argument('--min', dest='min_only', action='store_true',
-            help='Only output min.')
-        self.argparser.add_argument('--sum', dest='sum_only', action='store_true',
-            help='Only output sum.')
-        self.argparser.add_argument('--mean', dest='mean_only', action='store_true',
-            help='Only output mean.')
-        self.argparser.add_argument('--median', dest='median_only', action='store_true',
-            help='Only output median.')
-        self.argparser.add_argument('--stdev', dest='stdev_only', action='store_true',
-            help='Only output standard deviation.')
+                                    help='A comma separated list of column indices, names or ranges to be examined, e.g. "1,id,3-5". Defaults to all columns.')
+        self.argparser.add_argument('--type', dest='type_only', action='store_true',
+                                    help='Only output data type.')
         self.argparser.add_argument('--nulls', dest='nulls_only', action='store_true',
-            help='Only output whether column contains nulls.')
+                                    help='Only output whether columns contains nulls.')
         self.argparser.add_argument('--unique', dest='unique_only', action='store_true',
-            help='Only output unique values.')
-        self.argparser.add_argument('--freq', dest='freq_only', action='store_true',
-            help='Only output frequent values.')
+                                    help='Only output counts of unique values.')
+        self.argparser.add_argument('--min', dest='min_only', action='store_true',
+                                    help='Only output smallest values.')
+        self.argparser.add_argument('--max', dest='max_only', action='store_true',
+                                    help='Only output largest values.')
+        self.argparser.add_argument('--sum', dest='sum_only', action='store_true',
+                                    help='Only output sums.')
+        self.argparser.add_argument('--mean', dest='mean_only', action='store_true',
+                                    help='Only output means.')
+        self.argparser.add_argument('--median', dest='median_only', action='store_true',
+                                    help='Only output medians.')
+        self.argparser.add_argument('--stdev', dest='stdev_only', action='store_true',
+                                    help='Only output standard deviations.')
         self.argparser.add_argument('--len', dest='len_only', action='store_true',
-            help='Only output max value length.')
+                                    help='Only output the length of the longest values.')
+        self.argparser.add_argument('--freq', dest='freq_only', action='store_true',
+                                    help='Only output lists of frequent values.')
+        self.argparser.add_argument('--freq-count', dest='freq_count', type=int,
+                                    help='The maximum number of frequent values to display.')
+        self.argparser.add_argument('--count', dest='count_only', action='store_true',
+                                    help='Only output total row count.')
+        self.argparser.add_argument('-y', '--snifflimit', dest='sniff_limit', type=int,
+                                    help='Limit CSV dialect sniffing to the specified number of bytes. Specify "0" to disable sniffing entirely.')
 
     def main(self):
-        tab = table.Table.from_csv(
-            self.args.file,
-            snifflimit=self.args.snifflimit,
-            column_ids=self.args.columns,
-            zero_based=self.args.zero_based,
-            no_header_row=self.args.no_header_row,
+        if self.args.names_only:
+            self.print_column_names()
+            return
+
+        if self.additional_input_expected():
+            self.argparser.error('You must provide an input file or piped data.')
+
+        operations = [op for op in OPERATIONS.keys() if getattr(self.args, op + '_only')]
+
+        if len(operations) > 1:
+            self.argparser.error('Only one operation argument may be specified (--mean, --median, etc).')
+
+        if operations and self.args.csv_output:
+            self.argparser.error('You may not specify --csv and an operation (--mean, --median, etc) at the same time.')
+
+        if operations and self.args.count_only:
+            self.argparser.error('You may not specify --count and an operation (--mean, --median, etc) at the same time.')
+
+        if six.PY2:
+            self.output_file = codecs.getwriter('utf-8')(self.output_file)
+
+        if self.args.count_only:
+            count = len(list(agate.csv.reader(self.input_file)))
+
+            if not self.args.no_header_row:
+                count -= 1
+
+            self.output_file.write('Row count: %i\n' % count)
+
+            return
+
+        table = agate.Table.from_csv(
+            self.input_file,
+            skip_lines=self.args.skip_lines,
+            sniff_limit=self.args.sniff_limit,
             **self.reader_kwargs
         )
 
-        operations = [op for op in OPERATIONS if getattr(self.args, op + '_only')]
+        column_ids = parse_column_identifiers(
+            self.args.columns,
+            table.column_names,
+            self.get_column_offset()
+        )
 
-        if len(operations) > 1:
-            self.argparser.error('Only one statistic argument may be specified (mean, median, etc).')
+        kwargs = {}
 
-        for c in tab:
-            values = sorted(filter(lambda i: i is not None, c))
+        if self.args.freq_count:
+            kwargs['freq_count'] = self.args.freq_count
 
-            stats = {} 
+        # Output a single stat
+        if operations:
+            if len(column_ids) == 1:
+                self.print_one(table, column_ids[0], operations[0], label=False, **kwargs)
+            else:
+                for column_id in column_ids:
+                    self.print_one(table, column_id, operations[0], **kwargs)
+        else:
+            stats = {}
 
-            # Output a single stat
-            if len(operations) == 1:
-                op = operations[0]
-                stat = getattr(self, 'get_%s' % op)(c, values, {})
+            for column_id in column_ids:
+                stats[column_id] = self.calculate_stats(table, column_id, **kwargs)
 
-                # Formatting
-                if op == 'unique':
-                    stat = len(stat)
-                elif op == 'freq':
-                    stat = ', '.join([(u'"%s": %s' % (unicode(k), count)).encode('utf-8') for k, count in stat])
-                    stat = '{ %s }' % stat
-
-                if len(tab) == 1:
-                    self.output_file.write(unicode(stat))
-                else:
-                    self.output_file.write(u'%3i. %s: %s\n' % (c.order + 1, c.name, stat))
+            # Output as CSV
+            if self.args.csv_output:
+                self.print_csv(table, column_ids, stats)
             # Output all stats
             else:
-                for op in OPERATIONS:
-                    stats[op] = getattr(self, 'get_%s' % op)(c, values, stats)
+                self.print_stats(table, column_ids, stats)
 
-                self.output_file.write((u'%3i. %s\n' % (c.order + 1, c.name)).encode('utf-8'))
+    def is_finite_decimal(self, value):
+        return isinstance(value, Decimal) and value.is_finite()
 
-                if c.type == None:
-                    self.output_file.write(u'\tEmpty column\n')
-                    continue
-                    
-                self.output_file.write(u'\t%s\n' % c.type)
-                self.output_file.write(u'\tNulls: %s\n' % stats['nulls'])
-                
-                if len(stats['unique']) <= MAX_UNIQUE and c.type is not bool:
-                    uniques = [unicode(u) for u in list(stats['unique'])]
-                    self.output_file.write((u'\tValues: %s\n' % u', '.join(uniques)).encode('utf-8'))
+    def print_one(self, table, column_id, operation, label=True, **kwargs):
+        """
+        Print data for a single statistic.
+        """
+        column_name = table.column_names[column_id]
+
+        op_name = operation
+        getter = globals().get('get_%s' % op_name, None)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', agate.NullCalculationWarning)
+
+            try:
+                if getter:
+                    stat = getter(table, column_id, **kwargs)
                 else:
-                    if c.type not in [unicode, bool]:
-                        self.output_file.write(u'\tMin: %s\n' % stats['min'])
-                        self.output_file.write(u'\tMax: %s\n' % stats['max'])
+                    op = OPERATIONS[op_name]['aggregation']
+                    stat = table.aggregate(op(column_id))
 
-                        if c.type in [int, float]:
-                            self.output_file.write(u'\tSum: %s\n' % stats['sum'])
-                            self.output_file.write(u'\tMean: %s\n' % stats['mean'])
-                            self.output_file.write(u'\tMedian: %s\n' % stats['median'])
-                            self.output_file.write(u'\tStandard Deviation: %s\n' % stats['stdev'])
+                    if self.is_finite_decimal(stat):
+                        stat = format_decimal(stat, locale=agate.config.get_option('default_locale'))
+            except:
+                stat = None
 
-                    self.output_file.write(u'\tUnique values: %i\n' % len(stats['unique']))
+        # Formatting
+        if op_name == 'freq':
+            stat = ', '.join([(u'"%s": %s' % (six.text_type(row[column_name]), row['Count'])) for row in stat])
+            stat = u'{ %s }' % stat
 
-                    if len(stats['unique']) != len(values):
-                        self.output_file.write(u'\t%i most frequent values:\n' % MAX_FREQ)
-                        for value, count in stats['freq']:
-                            self.output_file.write((u'\t\t%s:\t%s\n' % (unicode(value), count)).encode('utf-8'))
-
-                    if c.type == unicode:
-                        self.output_file.write(u'\tMax length: %i\n' % stats['len'])
-
-        if not operations:
-            self.output_file.write(u'\n')
-            self.output_file.write(u'Row count: %s\n' % tab.count_rows())
-
-    def get_min(self, c, values, stats):
-        if c.type == NoneType:
-            return None
-
-        v = min(values)
-
-        if v in [datetime.datetime, datetime.date, datetime.time]:
-            return v.isoformat()
-        
-        return v
-
-    def get_max(self, c, values, stats):
-        if c.type == NoneType:
-            return None
-
-        v = max(values)
-
-        if v in [datetime.datetime, datetime.date, datetime.time]:
-            return v.isoformat()
-        
-        return v
-
-    def get_sum(self, c, values, stats):
-        if c.type not in [int, float]:
-            return None
-
-        return sum(values)
-
-    def get_mean(self, c, values, stats):
-        if c.type not in [int, float]:
-            return None
-
-        if 'sum' not in stats:
-            stats['sum'] = self.get_sum(c, values, stats)
-
-        return float(stats['sum']) / len(values)
-
-    def get_median(self, c, values, stats):
-        if c.type not in [int, float]:
-            return None
-
-        return median(values)
-
-    def get_stdev(self, c, values, stats):
-        if c.type not in [int, float]:
-            return None
-
-        if 'mean' not in stats:
-            stats['mean'] = self.get_mean(c, values, stats)
-
-        return math.sqrt(sum(math.pow(v - stats['mean'], 2) for v in values) / len(values)) 
-
-    def get_nulls(self, c, values, stats):
-        return c.has_nulls()
-
-    def get_unique(self, c, values, stats):
-        return set(values) 
-
-    def get_freq(self, c, values, stats):
-        return freq(values) 
-
-    def get_len(self, c, values, stats):
-        if c.type != unicode:
-            return None
-
-        return c.max_length()
-
-def median(l):
-    """
-    Compute the median of a list.
-    """
-    length = len(l)
-
-    if len(l) % 2 == 1:
-        return l[((length + 1) / 2) - 1]
-    else:
-        a = l[(length / 2) - 1]
-        b = l[length / 2]
-    return (float(a + b)) / 2  
-
-def freq(l, n=MAX_FREQ):
-    """
-    Count the number of times each value occurs in a column.
-    """
-    count = {}
-
-    for x in l:
-        s = unicode(x)
-        if count.has_key(s):
-            count[s] += 1
+        if label:
+            self.output_file.write(u'%3i. %s: %s\n' % (column_id + 1, column_name, stat))
         else:
-            count[s] = 1
+            self.output_file.write(u'%s\n' % stat)
 
-    # This will iterate through dictionary, return N highest
-    # values as (key, value) tuples.
-    top = nlargest(n, count.iteritems(), itemgetter(1))
+    def calculate_stats(self, table, column_id, **kwargs):
+        """
+        Calculate stats for all valid operations.
+        """
+        stats = {}
 
-    return top
+        for op_name, op_data in OPERATIONS.items():
+            getter = globals().get('get_%s' % op_name, None)
+
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', agate.NullCalculationWarning)
+
+                try:
+                    if getter:
+                        stats[op_name] = getter(table, column_id, **kwargs)
+                    else:
+                        op = op_data['aggregation']
+                        v = table.aggregate(op(column_id))
+
+                        if self.is_finite_decimal(v):
+                            v = format_decimal(v, locale=agate.config.get_option('default_locale'))
+
+                        stats[op_name] = v
+                except:
+                    stats[op_name] = None
+
+        return stats
+
+    def print_stats(self, table, column_ids, stats):
+        """
+        Print data for all statistics.
+        """
+        label_column_width = max([len(op_data['label']) for op_data in OPERATIONS.values()])
+
+        for column_id in column_ids:
+            column_name = table.column_names[column_id]
+            column = table.columns[column_id]
+            column_stats = stats[column_id]
+
+            self.output_file.write(('%3i. "%s"\n\n' % (column_id + 1, column_name)))
+
+            for op_name, op_data in OPERATIONS.items():
+                if column_stats[op_name] is None:
+                    continue
+
+                label = u'{label:{label_column_width}}'.format(**{
+                    'label_column_width': label_column_width,
+                    'label': op_data['label']
+                })
+
+                if op_name == 'freq':
+                    for i, row in enumerate(column_stats['freq']):
+                        if i == 0:
+                            self.output_file.write('\t{} '.format(label))
+                        else:
+                            self.output_file.write(u'\t{label:{label_column_width}} '.format(**{
+                                'label_column_width': label_column_width,
+                                'label': ''
+                            }))
+
+                        if isinstance(column.data_type, agate.Number):
+                            v = row[column_name]
+
+                            if self.is_finite_decimal(v):
+                                v = format_decimal(v, locale=agate.config.get_option('default_locale'))
+                        else:
+                            v = six.text_type(row[column_name])
+
+                        self.output_file.write(u'{} ({}x)\n'.format(v, row['Count']))
+
+                    continue
+
+                v = column_stats[op_name]
+
+                if op_name == 'nulls' and v:
+                    v = '%s (excluded from calculations)' % v
+                elif op_name == 'len':
+                    v = '%s characters' % v
+
+                self.output_file.write(u'\t{} {}\n'.format(label, v))
+
+            self.output_file.write('\n')
+
+        self.output_file.write('Row count: %s\n' % len(table.rows))
+
+    def print_csv(self, table, column_ids, stats):
+        """
+        Print data for all statistics as a csv table.
+        """
+        writer = agate.csv.writer(self.output_file)
+
+        header = ['column_id', 'column_name'] + [op_name for op_name in OPERATIONS.keys()]
+
+        writer.writerow(header)
+
+        for column_id in column_ids:
+            column_name = table.column_names[column_id]
+            column_stats = stats[column_id]
+
+            output_row = [column_id + 1, column_name]
+
+            for op_name, op_data in OPERATIONS.items():
+                if column_stats[op_name] is None:
+                    output_row.append(None)
+                    continue
+
+                if op_name == 'freq':
+                    value = ', '.join([six.text_type(row[column_name]) for row in column_stats['freq']])
+                else:
+                    value = column_stats[op_name]
+
+                output_row.append(value)
+
+            writer.writerow(output_row)
+
+
+def get_type(table, column_id, **kwargs):
+    return '%s' % table.columns[column_id].data_type.__class__.__name__
+
+
+def get_unique(table, column_id, **kwargs):
+    return len(table.columns[column_id].values_distinct())
+
+
+def get_freq(table, column_id, freq_count=5, **kwargs):
+    return table.pivot(column_id).order_by('Count', reverse=True).limit(freq_count)
 
 
 def launch_new_instance():
     utility = CSVStat()
-    utility.main()
-    
-if __name__ == "__main__":
-    launch_new_instance()
+    utility.run()
 
+
+if __name__ == '__main__':
+    launch_new_instance()

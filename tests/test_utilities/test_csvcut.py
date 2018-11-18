@@ -1,115 +1,93 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
-import StringIO
-import unittest
+import sys
 
-from csvkit import CSVKitReader
-from csvkit.utilities.csvcut import CSVCut
-from csvkit.exceptions import ColumnIdentifierError, RequiredHeaderError
+try:
+    from mock import patch
+except ImportError:
+    from unittest.mock import patch
 
-class TestCSVCut(unittest.TestCase):
+from csvkit.utilities.csvcut import CSVCut, launch_new_instance
+from tests.utils import CSVKitTestCase, ColumnsTests, EmptyFileTests, NamesTests
+
+
+class TestCSVCut(CSVKitTestCase, ColumnsTests, EmptyFileTests, NamesTests):
+    Utility = CSVCut
+
+    def test_launch_new_instance(self):
+        with patch.object(sys, 'argv', [self.Utility.__name__.lower(), 'examples/dummy.csv']):
+            launch_new_instance()
+
+    def test_skip_lines(self):
+        self.assertRows(['--skip-lines', '3', '-c', '1,3', 'examples/test_skip_lines.csv'], [
+            ['a', 'c'],
+            ['1', '3'],
+        ])
+
     def test_simple(self):
-        args = ['-c', '1,3', 'examples/dummy.csv']
-        output_file = StringIO.StringIO()
-        utility = CSVCut(args, output_file)
+        self.assertRows(['-c', '1,3', 'examples/dummy.csv'], [
+            ['a', 'c'],
+            ['1', '3'],
+        ])
 
-        utility.main()
-
-        input_file = StringIO.StringIO(output_file.getvalue())
-        reader = CSVKitReader(input_file)
-
-        self.assertEqual(reader.next(), ['a', 'c'])
-        self.assertEqual(reader.next(), ['1', '3'])
-
-    def test_names(self):
-        args = ['-n', 'examples/dummy.csv']
-        output_file = StringIO.StringIO()
-        utility = CSVCut(args, output_file)
-
-        utility.main()
-
-        input_file = StringIO.StringIO(output_file.getvalue())
-
-        self.assertEqual(input_file.next(), '  1: a\n')
-        self.assertEqual(input_file.next(), '  2: b\n')
-        self.assertEqual(input_file.next(), '  3: c\n')
+    def test_unicode(self):
+        self.assertRows(['-c', '1,3', 'examples/test_utf8.csv'], [
+            ['foo', 'baz'],
+            ['1', '3'],
+            ['4', u'ʤ'],
+        ])
 
     def test_with_gzip(self):
-        args = ['-c', '1,3', 'examples/dummy.csv.gz']
-        output_file = StringIO.StringIO()
-        utility = CSVCut(args, output_file)
-
-        utility.main()
-
-        input_file = StringIO.StringIO(output_file.getvalue())
-        reader = CSVKitReader(input_file)
-
-        self.assertEqual(reader.next(), ['a', 'c'])
-        self.assertEqual(reader.next(), ['1', '3'])
+        self.assertRows(['-c', '1,3', 'examples/dummy.csv.gz'], [
+            ['a', 'c'],
+            ['1', '3'],
+        ])
 
     def test_with_bzip2(self):
-        args = ['-c', '1,3', 'examples/dummy.csv.bz2']
-        output_file = StringIO.StringIO()
-        utility = CSVCut(args, output_file)
-
-        utility.main()
-
-        input_file = StringIO.StringIO(output_file.getvalue())
-        reader = CSVKitReader(input_file)
-
-        self.assertEqual(reader.next(), ['a', 'c'])
-        self.assertEqual(reader.next(), ['1', '3'])
+        self.assertRows(['-c', '1,3', 'examples/dummy.csv.bz2'], [
+            ['a', 'c'],
+            ['1', '3'],
+        ])
 
     def test_exclude(self):
-        args = ['-C', '1,3', 'examples/dummy.csv']
-        output_file = StringIO.StringIO()
-        utility = CSVCut(args, output_file)
-
-        utility.main()
-
-        input_file = StringIO.StringIO(output_file.getvalue())
-        reader = CSVKitReader(input_file)
-
-        self.assertEqual(reader.next(), ['b'])
-        self.assertEqual(reader.next(), ['2'])
+        self.assertRows(['-C', '1,3', 'examples/dummy.csv'], [
+            ['b'],
+            ['2'],
+        ])
 
     def test_include_and_exclude(self):
-        args = ['-c', '1,3', '-C', '3', 'examples/dummy.csv']
-        output_file = StringIO.StringIO()
-        utility = CSVCut(args, output_file)
+        self.assertRows(['-c', '1,3', '-C', '3', 'examples/dummy.csv'], [
+            ['a'],
+            ['1'],
+        ])
 
-        utility.main()
-
-        input_file = StringIO.StringIO(output_file.getvalue())
-        reader = CSVKitReader(input_file)
-
-        self.assertEqual(reader.next(), ['a'])
-        self.assertEqual(reader.next(), ['1'])
-
-    def test_invalid_column(self):
-        args = ['-c', '0', 'examples/dummy.csv']
-        output_file = StringIO.StringIO()
-        utility = CSVCut(args, output_file)
-
-        self.assertRaises(ColumnIdentifierError, utility.main)
-
-    def test_invalid_options(self):
-        args = ['-n', '--no-header-row', 'examples/dummy.csv']
-        output_file = StringIO.StringIO()
-        utility = CSVCut(args, output_file)
-
-        self.assertRaises(RequiredHeaderError, utility.main)
+    def test_delete_empty(self):
+        self.assertRows(['-c', 'column_c', '--delete-empty-rows', 'examples/bad.csv'], [
+            ['column_c'],
+            ['17'],
+        ])
 
     def test_no_header_row(self):
-        args = ['-c', '2', '--no-header-row', 'examples/no_header_row.csv']
-        output_file = StringIO.StringIO()
-        utility = CSVCut(args, output_file)
+        self.assertRows(['-c', '2', '--no-header-row', 'examples/no_header_row.csv'], [
+            ['b'],
+            ['2'],
+        ])
 
-        utility.main()
+    def test_ragged(self):
+        # Test that csvcut doesn't error when a row is short.
+        self.get_output(['-c', 'column_c', 'examples/bad.csv'])
 
-        input_file = StringIO.StringIO(output_file.getvalue())
-        reader = CSVKitReader(input_file)
+    def test_truncate(self):
+        # Test that csvcut truncates long rows.
+        self.assertRows(['-C', 'column_a,column_b', '--delete-empty-rows', 'examples/bad.csv'], [
+            ['column_c'],
+            ['17'],
+        ])
 
-        self.assertEqual(reader.next(), ['column2'])
-        self.assertEqual(reader.next(), ['2'])
-
+    def test_names_with_skip_lines(self):
+        self.assertLines(['--names', '--skip-lines', '3', 'examples/test_skip_lines.csv'], [
+            '  1: a',
+            '  2: b',
+            '  3: c',
+        ])

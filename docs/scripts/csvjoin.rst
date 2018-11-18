@@ -5,17 +5,20 @@ csvjoin
 Description
 ===========
 
-Merges two or more CSV tables together using a method analogous to SQL JOIN operation. By default it performs an inner join, but full outer, left outer, and right outer are also available via flags. Key columns are specified with the -c flag (either a single column which exists in all tables, or a comma-seperated list of columns with one corresponding to each). If the columns flag is not provided then the tables will be merged "sequentially", that is they will be merged in row order with no filtering::
+Merges two or more CSV tables together using a method analogous to SQL JOIN operation. By default it performs an inner join, but full outer, left outer, and right outer are also available via flags. Key columns are specified with the -c flag (either a single column which exists in all tables, or a comma-separated list of columns with one corresponding to each). If the columns flag is not provided then the tables will be merged "sequentially", that is they will be merged in row order with no filtering::
 
     usage: csvjoin [-h] [-d DELIMITER] [-t] [-q QUOTECHAR] [-u {0,1,2,3}] [-b]
-                   [-p` ESCAPECHAR] [-e ENCODING] [-j JOIN] [--outer] [--left]
-                   [--right]
-                   FILES [FILES ...]
+                   [-p ESCAPECHAR] [-z FIELD_SIZE_LIMIT] [-e ENCODING] [-L LOCALE]
+                   [-S] [--blanks] [--date-format DATE_FORMAT]
+                   [--datetime-format DATETIME_FORMAT] [-H] [-K SKIP_LINES] [-v]
+                   [-l] [--zero] [-V] [-c COLUMNS] [--outer] [--left] [--right]
+                   [-y SNIFF_LIMIT] [-I]
+                   [FILE [FILE ...]]
 
     Execute a SQL-like join to merge CSV files on a specified column or columns.
 
     positional arguments:
-      FILES                 The CSV files to operate on. If only one is specified,
+      FILE                  The CSV files to operate on. If only one is specified,
                             it will be copied to STDOUT.
 
     optional arguments:
@@ -37,19 +40,26 @@ Merges two or more CSV tables together using a method analogous to SQL JOIN oper
                             inner join. If more than two files are provided this
                             will be executed as a sequence of right outer joins,
                             starting at the right.
+      -y SNIFF_LIMIT, --snifflimit SNIFF_LIMIT
+                            Limit CSV dialect sniffing to the specified number of
+                            bytes. Specify "0" to disable sniffing entirely.
+      -I, --no-inference    Disable type inference when parsing CSV input.
 
     Note that the join operation requires reading all files into memory. Don't try
     this on very large files.
 
-Also see: :doc:`common_arguments`.
+
+See also: :doc:`../common_arguments`.
 
 Examples
 ========
 
 ::
 
-    csvjoin -c "ColumnKey,Column Key" --outer file1.csv file2.csv
+    csvjoin -c 1 examples/join_a.csv examples/join_b.csv
 
 This command says you have two files to outer join, file1.csv and file2.csv. The key column in file1.csv is ColumnKey, the key column in file2.csv is Column Key.
 
+Add two empty columns to the right of a CSV::
 
+    echo "," | csvjoin examples/dummy.csv -
